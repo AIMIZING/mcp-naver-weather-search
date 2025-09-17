@@ -1,5 +1,6 @@
-# server.py
-import sys
+# main.py
+import os
+import re
 import time
 import json
 import logging
@@ -10,29 +11,27 @@ import requests
 from bs4 import BeautifulSoup
 from cachetools import TTLCache
 
-from mcp.server.fastmcp import FastMCP
-import os
-import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+from mcp.server.fastmcp import FastMCP
 
 # ─────────────────────────────────────────────────────────────
 # 기본 설정
 # ─────────────────────────────────────────────────────────────
-
-CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "600"))
-RATE_LIMIT_INTERVAL = float(os.getenv("RATE_LIMIT_INTERVAL", "1.0"))
-
-mcp = FastMCP("Naver Weather MCP (Scraping)")
-
 LOG_LEVEL = logging.INFO
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s - %(levelname)s - %(message)s")
 log = logging.getLogger("naver-weather")
 
+CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "600"))   # 10분
+RATE_LIMIT_INTERVAL = float(os.getenv("RATE_LIMIT_INTERVAL", "1.0"))  # 초당 1회
+DEFAULT_TIMEOUT = 6.0
+
 # 네이버 검색 URL 템플릿
 SEARCH_URL = "https://search.naver.com/search.naver?query={query}"
 
-# HTTP 설정
-DEFAULT_TIMEOUT = 6.0
+# HTTP 요청 헤더
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -40,10 +39,7 @@ USER_AGENT = (
 )
 
 # 캐시/레이트리밋
-CACHE_TTL_SECONDS = 600  # 10분
 cache: TTLCache[str, Dict[str, Any]] = TTLCache(maxsize=256, ttl=CACHE_TTL_SECONDS)
-
-RATE_LIMIT_INTERVAL = 1.0  # 초당 1회
 _last_request_ts = 0.0
 _rl_lock = threading.Lock()
 
@@ -51,17 +47,14 @@ _rl_lock = threading.Lock()
 MAX_RETRIES = 3
 BACKOFF_BASE = 0.8  # 지수 백오프 시작(초)
 
-# 선택자(버전 관리 가능)
+# 선택자(레이아웃 변경 시 여기를 업데이트)
 SELECTORS = {
-    "temp_primary": [".temperature_text > strong"],  # 예: '23°'
-    "status_primary": [".weather_main"],            # 예: '맑음'
-    "sensible_temp": [".temperature_info .sensible em"],  # '체감온도 20°'
-    # 보조 선택자 (DOM 변경 시 추가)
+    "temp_primary": [".temperature_text > strong"],           # '23°'
+    "status_primary": [".weather_main"],                      # '맑음'
+    "sensible_temp": [".temperature_info .sensible em"],      # '체감온도 20°'
     "temp_fallback": ["span.temperature_text strong", ".temperature_text"],
     "status_fallback": [".status .weather", ".status", ".weather"],
-    "humidity_guess_blocks": [
-        ".summary_list", ".weather_info", ".temperature_info"
-    ],
+    "humidity_guess_blocks": [".summary_list", ".weather_info", ".temperature_info"],
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -107,7 +100,6 @@ def _first_text(soup: BeautifulSoup, selectors: list[str]) -> Optional[str]:
 
 def _guess_humidity(soup: BeautifulSoup) -> Optional[str]:
     """'습도' 텍스트를 포함한 숫자 추정(레이아웃 변화 대비 완화)"""
-    import re
     for block_sel in SELECTORS["humidity_guess_blocks"]:
         block = soup.select_one(block_sel)
         if not block:
@@ -119,9 +111,11 @@ def _guess_humidity(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 def _normalize_temp(txt: str) -> str:
-    # 예: "23°" or "23도" → "23°C" 형태로
-    t = txt.replace("도", "").replace(" ", "").replace("°", "")
-    if t.startswith("+"): t = t[1:]
+    # "현재온22.7°" 같이 앞에 글자가 붙을 수 있어 숫자 전 문자 제거
+    clean = re.sub(r"^[^\d\-\+]*", "", txt)
+    t = clean.replace("도", "").replace(" ", "").replace("°", "")
+    if t.startswith("+"):
+        t = t[1:]
     return f"{t}°C" if t else txt
 
 def _parse_weather(html: str, region: str) -> Dict[str, Any]:
@@ -135,7 +129,7 @@ def _parse_weather(html: str, region: str) -> Dict[str, Any]:
     if temp:
         temp = _normalize_temp(temp)
 
-    parsed = {
+    return {
         "region": region,
         "status": status,
         "temperature": temp,
@@ -144,7 +138,6 @@ def _parse_weather(html: str, region: str) -> Dict[str, Any]:
         "source": SEARCH_URL.format(query=f"{region}+날씨"),
         "timestamp": int(time.time()),
     }
-    return parsed
 
 def _format_text(data: Dict[str, Any]) -> str:
     lines = [f"[네이버 날씨] {data.get('region','-')}"]
@@ -153,26 +146,22 @@ def _format_text(data: Dict[str, Any]) -> str:
     if data.get("sensible_temperature"): lines.append(f"- 체감온도: {data['sensible_temperature']}")
     if data.get("humidity"): lines.append(f"- 습도: {data['humidity']}")
     if data.get("source"): lines.append(f"- 참고: {data['source']}")
-    # 선택자 실패 대비
     if len(lines) <= 2:
         lines.append("- 안내: 일부 정보 수집에 실패했습니다. 잠시 후 다시 시도해 주세요.")
         if data.get("source"): lines.append(f"- 참고: {data['source']}")
     return "\n".join(lines)
 
 # ─────────────────────────────────────────────────────────────
-# MCP Tool
+# MCP 정의
 # ─────────────────────────────────────────────────────────────
+mcp = FastMCP("Naver Weather MCP (Scraping, HTTP)")
+
 @mcp.tool(
     name="get_weather_by_region",
     description="지역명을 받아 네이버 검색 결과(날씨 모듈)에서 현재 상태/기온 등을 조회합니다. format='text'|'json'"
 )
 def get_weather_by_region(region: str, format: str = "text") -> str:
-    """
-    Args:
-        region: 조회할 지역명 (예: '서울', '부산 해운대', 'Jeju')
-        format: 'text' 또는 'json' (기본: text)
-    """
-    region_key = region.strip()
+    region_key = (region or "").strip()
     if not region_key:
         return "지역명이 비어 있습니다. 예: region='서울'"
 
@@ -188,14 +177,12 @@ def get_weather_by_region(region: str, format: str = "text") -> str:
             cache[region_key] = data
         except Exception as e:
             log.exception("weather fetch/parse failed")
-            # 축약 오류 메시지(내부 정보 노출 방지)
             return f"[오류] 날씨 정보를 가져오는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요. (reason: {str(e)[:120]})"
 
-    if format.lower() == "json":
+    if (format or "").lower() == "json":
         return json.dumps(data, ensure_ascii=False, indent=2)
     return _format_text(data)
 
-# (선택) 리소스: 제공 필드 안내
 @mcp.resource(
     uri="naver://weather/fields",
     name="supported_fields",
@@ -208,10 +195,24 @@ def supported_fields() -> Dict[str, Any]:
         "rate_limit_seconds": RATE_LIMIT_INTERVAL,
     }
 
-# --- FastAPI 앱 생성 및 Streamable HTTP 마운트 ---
+# ─────────────────────────────────────────────────────────────
+# HTTP 서버 (Streamable HTTP, /mcp)
+# ─────────────────────────────────────────────────────────────
 app = FastAPI(title="Naver Weather MCP (HTTP)")
-# FastMCP가 제공하는 HTTP(스트리머블) 앱을 /mcp 경로에 마운트
-app.mount("/mcp", mcp.streamable_http_app())  # 메서드명은 FastMCP 쪽 구현에 따릅니다. :contentReference[oaicite:1]{index=1}
+
+# 브라우저/웹 클라이언트 호환을 위한 CORS (필요 시 도메인 제한하세요)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["mcp-session-id", "mcp-protocol-version"],
+    max_age=86400,
+)
+
+# FastMCP가 제공하는 Streamable HTTP 앱을 /mcp 경로에 마운트
+app.mount("/mcp", mcp.streamable_http_app())
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))

@@ -1,15 +1,21 @@
+runtime: "container"
+
+build:
+  dockerfile: "Dockerfile" 
+  dockerBuildPath: "."     
+
 startCommand:
-  type: http
+  type: "http"
   http:
-    port: 8000
-    path: /mcp
+    port: 8000             
+    path: /mcp             
   commandFunction: |-
     () => ({
       command: 'python',
-      args: ['server_http.py'],
+      args: ['src/main.py'],
       env: {
+        PORT: '8000',
         CACHE_TTL_SECONDS: '600',
-        RATE_LIMIT_INTERVAL: '1.0',
-        PORT: '8000'
+        RATE_LIMIT_INTERVAL: '1.0'
       }
     })
