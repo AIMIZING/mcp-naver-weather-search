@@ -1,0 +1,4 @@
+mcp[server]
+requests
+beautifulsoup4
+cachetools

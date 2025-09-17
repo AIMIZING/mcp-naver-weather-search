@@ -1,0 +1,23 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      cacheTtlSeconds:
+        type: number
+        description: Cache TTL in seconds (default 600)
+      rateLimitSeconds:
+        type: number
+        description: Minimum interval between requests (default 1.0)
+  commandFunction: |-
+    (config) => ({
+      command: 'python',
+      args: ['server.py'],
+      env: {
+        CACHE_TTL_SECONDS: String(config.cacheTtlSeconds || 600),
+        RATE_LIMIT_INTERVAL: String(config.rateLimitSeconds || 1.0),
+      }
+    })
+  exampleConfig:
+    cacheTtlSeconds: 600
+    rateLimitSeconds: 1.0
