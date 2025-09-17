@@ -14,8 +14,6 @@ startCommand:
       command: 'python',
       args: ['src/main.py'],
       env: {
-        PORT: '8000',
-        TRANSPORT: 'http',
         CACHE_TTL_SECONDS: '600',
         RATE_LIMIT_INTERVAL: '1.0'
       }

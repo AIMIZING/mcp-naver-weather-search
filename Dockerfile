@@ -9,7 +9,7 @@ COPY . /app
 
 # 의존성 설치 (requirements.txt가 없다면 직접 지정)
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir mcp requests beautifulsoup4 cachetools
+    pip install --no-cache-dir "mcp[server]" requests beautifulsoup4 cachetools
 
 # 환경 변수 기본값 설정
 ENV TRANSPORT=http
