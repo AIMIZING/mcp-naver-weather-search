@@ -1,11 +1,15 @@
 startCommand:
-  type: stdio
+  type: http
+  http:
+    port: 8000
+    path: /mcp
   commandFunction: |-
-    (config) => ({
+    () => ({
       command: 'python',
-      args: ['server.py'],
+      args: ['server_http.py'],
       env: {
-        CACHE_TTL_SECONDS: String(config.cacheTtlSeconds || 600),
-        RATE_LIMIT_INTERVAL: String(config.rateLimitSeconds || 1.0),
+        CACHE_TTL_SECONDS: '600',
+        RATE_LIMIT_INTERVAL: '1.0',
+        PORT: '8000'
       }
     })

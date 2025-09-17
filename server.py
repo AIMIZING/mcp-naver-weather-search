@@ -12,6 +12,8 @@ from cachetools import TTLCache
 
 from mcp.server.fastmcp import FastMCP
 import os
+import uvicorn
+from fastapi import FastAPI
 
 # ─────────────────────────────────────────────────────────────
 # 기본 설정
@@ -206,9 +208,11 @@ def supported_fields() -> Dict[str, Any]:
         "rate_limit_seconds": RATE_LIMIT_INTERVAL,
     }
 
-# ─────────────────────────────────────────────────────────────
-# 실행
-# ─────────────────────────────────────────────────────────────
+# --- FastAPI 앱 생성 및 Streamable HTTP 마운트 ---
+app = FastAPI(title="Naver Weather MCP (HTTP)")
+# FastMCP가 제공하는 HTTP(스트리머블) 앱을 /mcp 경로에 마운트
+app.mount("/mcp", mcp.streamable_http_app())  # 메서드명은 FastMCP 쪽 구현에 따릅니다. :contentReference[oaicite:1]{index=1}
+
 if __name__ == "__main__":
-    print("🔧 Naver Weather MCP (scraping) starting…", file=sys.stderr)
-    mcp.run(transport="stdio")
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

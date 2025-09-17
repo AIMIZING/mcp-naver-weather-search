@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir mcp[cli] httpx pydantic python-dotenv
+RUN pip install --no-cache-dir mcp[cli] httpx pydantic python-dotenv fastapi uvicorn beautifulsoup4 cachetools requests
 
 # Set environment variables
 ENV CACHE_TTL_SECONDS=600
