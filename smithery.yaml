@@ -1,21 +1,11 @@
-runtime: "container"
+# Smithery configuration file: https://smithery.ai/docs/build/project-config
 
+runtime: container
 build:
-  dockerfile: "Dockerfile" 
-  dockerBuildPath: "."     
-
+  dockerfile: Dockerfile
+  dockerBuildPath: .
 startCommand:
-  type: "http"
-  http:
-    port: 8000             
-    path: /mcp             
-  commandFunction: |-
-    () => ({
-      command: 'python',
-      args: ['src/main.py'],
-      env: {
-        PORT: '8000',
-        CACHE_TTL_SECONDS: '600',
-        RATE_LIMIT_INTERVAL: '1.0'
-      }
-    })
+  type: http
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    {}
