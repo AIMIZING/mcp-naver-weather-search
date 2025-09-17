@@ -1,9 +1,4 @@
-mcp[cli] 
-httpx 
-pydantic
-python-dotenv
-fastapi 
-uvicorn 
-beautifulsoup4 
-cachetools
+mcp
 requests
+beautifulsoup4
+cachetools
