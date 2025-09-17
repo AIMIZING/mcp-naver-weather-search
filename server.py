@@ -11,10 +11,15 @@ from bs4 import BeautifulSoup
 from cachetools import TTLCache
 
 from mcp.server.fastmcp import FastMCP
+import os
 
 # ─────────────────────────────────────────────────────────────
 # 기본 설정
 # ─────────────────────────────────────────────────────────────
+
+CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "600"))
+RATE_LIMIT_INTERVAL = float(os.getenv("RATE_LIMIT_INTERVAL", "1.0"))
+
 mcp = FastMCP("Naver Weather MCP (Scraping)")
 
 LOG_LEVEL = logging.INFO
